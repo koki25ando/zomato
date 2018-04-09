@@ -1,0 +1,123 @@
+---
+title: "zomato"
+author: "Koki Ando"
+date: "4/7/2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+```{r}
+library(tidyverse)
+library(maps)
+library(ggmap)
+library(data.table)
+zomato <- fread("https://s3-ap-southeast-2.amazonaws.com/koki25ando/zomato.csv", data.table = FALSE)
+```
+```{r}
+names(zomato)[18] <- "Aggregate.rating"
+```
+
+[Kaggle.com](https://www.kaggle.com/shrutimehta/zomato-restaurants-data/data)
+```{r}
+world.map <- map_data ("world")
+ggplot() + 
+  geom_map(data=world.map, map=world.map,
+           aes(x=long, y=lat, group=group, map_id=region),
+           fill="white", colour="black") + 
+  geom_point(data = zomato, aes(x = Longitude, y = Latitude), 
+             colour = "red", alpha = .3)
+```
+
+```{r}
+australia.map <- world.map %>% filter(region == "Australia")
+ggplot() + 
+  geom_map(data=australia.map, map=australia.map,
+           aes(x=long, y=lat, group=group, map_id=region),
+           fill="white", colour="black") + 
+  geom_point(data = zomato, aes(x = Longitude, y = Latitude), 
+             colour = "red", alpha = .5) + 
+  xlim(100, 170) + ylim(-50,0)
+```
+
+```{r}
+names(zomato)[3] <- "Country.Code"
+india.zomato <- zomato %>% filter(Country.Code == 1)
+india.map <- geocode("india")
+india.coor <- c(lon = india.map$lon, lat = india.map$lat)
+india.ggmap <- get_map(india.coor, zoom = 5, scale = 1)
+ggmap(india.ggmap, base_layer = ggplot(india.zomato, aes(Longitude, Latitude))) + 
+  geom_point(colour = "red", alpha = .3, size = .3)
+```
+
+```{r}
+nd.zomato <- india.zomato %>% filter(City == "New Delhi")
+new.delhi <- geocode("new delhi")
+nd.coor <- c(lon = new.delhi$lon, lat = new.delhi$lat)
+nd.map <- get_map(nd.coor, zoom = 12, scale = 1)
+ggmap(nd.map) + 
+  geom_point(data = nd.zomato,
+         aes(x = Longitude, y = Latitude, colour = Aggregate.rating), alpha = .6, size = 1) +
+  scale_colour_gradient(low = "yellow", high = "red")
+```
+```{r}
+ggmap(nd.map) + 
+  geom_point(data = nd.zomato,
+         aes(x = Longitude, y = Latitude, colour = Locality), alpha = .6, size = 1, show.legend=F) 
+```
+```{r}
+ggplot(nd.zomato) + geom_histogram(aes(Aggregate.rating))
+```
+
+Remove Raing:0 restaurants
+```{r}
+nd.zomato <- nd.zomato %>% filter(Aggregate.rating != 0) 
+ggplot(nd.zomato) + geom_histogram(aes(Aggregate.rating))
+ggplot(nd.zomato) + geom_histogram(aes(Aggregate.rating)) + 
+  geom_vline(xintercept = mean(nd.zomato$Aggregate.rating), linetype="dotted", 
+                color = "blue", size=1.5) +
+  geom_text(aes(x=mean(nd.zomato$Aggregate.rating), 
+                label="Mean", y = 200), colour="blue",vjust = 3, text=element_text(size=11))
+```
+Pick up the restaurants whose Rating scores are above the mean.
+```{r}
+top.nd.zomato <- nd.zomato %>% filter(Aggregate.rating > mean(Aggregate.rating))
+```
+
+Where are they located?
+```{r}
+ggmap(nd.map) + 
+  geom_point(data = top.nd.zomato,
+         aes(x = Longitude, y = Latitude, colour = Aggregate.rating), alpha = .6, size = 1) + 
+  scale_colour_gradient(low = "yellow", high = "red")
+```
+
+
+```{r}
+names(top.nd.zomato)[17] <- "Price.range"
+ggplot(top.nd.zomato) + geom_histogram(aes(Price.range))
+```
+```{r}
+names(top.nd.zomato)[11] <- "Average.Cost.for.two"
+ggplot(top.nd.zomato) + geom_histogram(aes(Average.Cost.for.two))
+```
+
+```{r}
+top.nd.zomato %>% head()
+```
+```{r}
+ggplot(top.nd.zomato) + geom_histogram(aes(Votes))
+```
+
+```{r}
+names(top.nd.zomato)[20] <- "Rating.text"
+top.nd.zomato %>% 
+  ggplot() + geom_boxplot(aes(x = Rating.text, y = Votes, fill =Rating.text))
+```
+```{r}
+ggplot(top.nd.zomato) + geom_histogram(aes(Votes, fill = Rating.text))
+```
+
