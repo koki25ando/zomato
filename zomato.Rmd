@@ -1,5 +1,5 @@
 ---
-title: "zomato"
+title: "Geospatial Analysis of Food Restaurants in New Delhi"
 author: "Koki Ando"
 date: "4/7/2018"
 output: html_document
@@ -9,19 +9,32 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-## R Markdown
+# Introduction
+## What is zomato?
+
+## Data Source
+
+
+
+# Motivation
+[Kaggle.com](https://www.kaggle.com/shrutimehta/zomato-restaurants-data/data)
+1. Geospatial data analysis
+2. Find the food restaurat food trend at any places
+
+# Preparation
 ```{r}
 library(tidyverse)
 library(maps)
 library(ggmap)
 library(data.table)
 zomato <- fread("https://s3-ap-southeast-2.amazonaws.com/koki25ando/zomato.csv", data.table = FALSE)
-```
-```{r}
+names(zomato)[3] <- "Country.Code"
 names(zomato)[18] <- "Aggregate.rating"
 ```
 
-[Kaggle.com](https://www.kaggle.com/shrutimehta/zomato-restaurants-data/data)
+# Data Analysis
+## Geospatial Analysis
+### World Map Visualization
 ```{r}
 world.map <- map_data ("world")
 ggplot() + 
@@ -29,22 +42,14 @@ ggplot() +
            aes(x=long, y=lat, group=group, map_id=region),
            fill="white", colour="black") + 
   geom_point(data = zomato, aes(x = Longitude, y = Latitude), 
-             colour = "red", alpha = .3)
+             colour = "red", alpha = .3) + 
+  labs()
 ```
+Seems like there are many data obeject from India. Thus, in this report, I am going to focus on food restaurant in India.
+
+## India's geospatial data analysis
 
 ```{r}
-australia.map <- world.map %>% filter(region == "Australia")
-ggplot() + 
-  geom_map(data=australia.map, map=australia.map,
-           aes(x=long, y=lat, group=group, map_id=region),
-           fill="white", colour="black") + 
-  geom_point(data = zomato, aes(x = Longitude, y = Latitude), 
-             colour = "red", alpha = .5) + 
-  xlim(100, 170) + ylim(-50,0)
-```
-
-```{r}
-names(zomato)[3] <- "Country.Code"
 india.zomato <- zomato %>% filter(Country.Code == 1)
 india.map <- geocode("india")
 india.coor <- c(lon = india.map$lon, lat = india.map$lat)
@@ -53,6 +58,17 @@ ggmap(india.ggmap, base_layer = ggplot(india.zomato, aes(Longitude, Latitude))) 
   geom_point(colour = "red", alpha = .3, size = .3)
 ```
 
+### Which city to focus on?
+
+```{r}
+india.zomato$City %>% table()
+```
+
+New Delhi has the most of the restaurants in India.
+
+### New Delhi's Food restaurat
+
+#### Google Map visualization
 ```{r}
 nd.zomato <- india.zomato %>% filter(City == "New Delhi")
 new.delhi <- geocode("new delhi")
@@ -63,61 +79,99 @@ ggmap(nd.map) +
          aes(x = Longitude, y = Latitude, colour = Aggregate.rating), alpha = .6, size = 1) +
   scale_colour_gradient(low = "yellow", high = "red")
 ```
-```{r}
-ggmap(nd.map) + 
-  geom_point(data = nd.zomato,
-         aes(x = Longitude, y = Latitude, colour = Locality), alpha = .6, size = 1, show.legend=F) 
-```
+
+At this time, I tiried using ggmap package for the first time. Ggmap package enable us to access the google map images.<br/>
+Restaurants are scattered throughout the city.
+
+### Data Cleaning
 ```{r}
 ggplot(nd.zomato) + geom_histogram(aes(Aggregate.rating))
+
+nd.zomato <- nd.zomato %>% filter(Aggregate.rating != 0) 
 ```
 
-Remove Raing:0 restaurants
+Removed useless objects that are, in this case, restaurants with 0 raging point.
 ```{r}
-nd.zomato <- nd.zomato %>% filter(Aggregate.rating != 0) 
-ggplot(nd.zomato) + geom_histogram(aes(Aggregate.rating))
+mean.nd.restaurants <- mean(nd.zomato$Aggregate.rating)
 ggplot(nd.zomato) + geom_histogram(aes(Aggregate.rating)) + 
   geom_vline(xintercept = mean(nd.zomato$Aggregate.rating), linetype="dotted", 
                 color = "blue", size=1.5) +
-  geom_text(aes(x=mean(nd.zomato$Aggregate.rating), 
-                label="Mean", y = 200), colour="blue",vjust = 3, text=element_text(size=11))
-```
-Pick up the restaurants whose Rating scores are above the mean.
-```{r}
-top.nd.zomato <- nd.zomato %>% filter(Aggregate.rating > mean(Aggregate.rating))
+  geom_text(aes(x=mean.nd.restaurants, 
+                label=paste("Mean",":", round(mean.nd.restaurants,3)), y = 200), colour="red",vjust = 3, text=element_text(size=11), family = "Times New Roman")
 ```
 
-Where are they located?
+Plotting the mean of rating of restaurants.
+
+#### Pick up the restaurants whose rating scores are above the mean. Where are they located?
+
 ```{r}
+top.nd.zomato <- nd.zomato %>% filter(Aggregate.rating > mean.nd.restaurants)
+
 ggmap(nd.map) + 
   geom_point(data = top.nd.zomato,
          aes(x = Longitude, y = Latitude, colour = Aggregate.rating), alpha = .6, size = 1) + 
   scale_colour_gradient(low = "yellow", high = "red")
 ```
+## Find Trend Food
+### String Manipulation using Stringr
+
+```{r}
+food.type <- top.nd.zomato$Cuisines
+japanese.restaurant <- str_detect(food.type, pattern = "Japanese")
+top.nd.zomato[japanese.restaurant,] %>% nrow()
+```
+
+Unfortunately only 38 restaurants offer japanese food. The answer is No. Japanese food are not popular in New Delhi.
+
+### What are the most polular food in New Delhi?
+```{r}
+food.category <- food.type %>% str_split(",", simplify = TRUE)
+food.category <- data.frame(table(food.category))
+food.category <- food.category[-1,]
+
+food.category %>% arrange(desc(Freq)) %>% top_n(15) %>% 
+  ggplot(aes(x = reorder(x = food.category, X = desc(Freq)), y = Freq)) + 
+  geom_bar(stat = "identity") + 
+  theme(axis.text.x = element_text(angle = 30, hjust = 1))
+```
+
+There are some duplications for some reason. However, it is apparent that North Indian, Chinese and Italian food restaurants are popular in the city.<br/>
+Thus, in this article, I'm going to focus on them.
+
+```{r}
+pop.food <- top.nd.zomato$Cuisines %>% str_split(pattern = ",") %>% str_detect(c("North Indian", "Chinese", "Italian"))
+pop.top.nd.zomato <- top.nd.zomato[pop.food,]
+ggmap(nd.map) + 
+  geom_point(data = pop.top.nd.zomato,
+         aes(x = Longitude, y = Latitude, colour = Rating.text))
+```
+
+# Which Suburb has the highest rating?
+
+```{r}
+top10.pop.top.nd.zomato <- 
+  pop.top.nd.zomato %>% 
+  group_by(Locality) %>% 
+  summarise(Average.rating = mean(Aggregate.rating)) %>% 
+  arrange(desc(Average.rating)) %>% head(n = 10)
+
+top10.pop.top.nd.zomato %>% 
+  ggplot(aes(x = as.factor(Locality), y = Average.rating)) + 
+  geom_bar(stat = "identity") + 
+  theme(axis.text.x = element_text(angle = 70, vjust = .5))
+```
+
+Extracted top 10 Suburb
+```{r}
+suburb <- top10.pop.top.nd.zomato$Locality
+```
 
 
 ```{r}
-names(top.nd.zomato)[17] <- "Price.range"
-ggplot(top.nd.zomato) + geom_histogram(aes(Price.range))
+ggmap(nd.map) + 
+  geom_point(data = pop.top.nd.zomato %>% 
+               filter(Locality %in% suburb) %>% 
+               group_by(Locality) %>% 
+               mutate(average.Rate = mean(Aggregate.rating)),
+         aes(x = Longitude, y = Latitude, size = average.Rate, colour = Locality))
 ```
-```{r}
-names(top.nd.zomato)[11] <- "Average.Cost.for.two"
-ggplot(top.nd.zomato) + geom_histogram(aes(Average.Cost.for.two))
-```
-
-```{r}
-top.nd.zomato %>% head()
-```
-```{r}
-ggplot(top.nd.zomato) + geom_histogram(aes(Votes))
-```
-
-```{r}
-names(top.nd.zomato)[20] <- "Rating.text"
-top.nd.zomato %>% 
-  ggplot() + geom_boxplot(aes(x = Rating.text, y = Votes, fill =Rating.text))
-```
-```{r}
-ggplot(top.nd.zomato) + geom_histogram(aes(Votes, fill = Rating.text))
-```
-
